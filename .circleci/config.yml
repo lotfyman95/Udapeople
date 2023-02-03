@@ -28,8 +28,18 @@ commands:
             sudo apt update
             sudo apt install software-properties-common
             sudo add-apt-repository --yes --update ppa:ansible/ansible
-            sudo apt install ansible
+            sudo apt install ansible -y
 
+  install_node:
+    description: Install Node.js 13.8.0
+    steps:
+      - run:
+          name: Install Node.js 13.8.0
+          command: |
+            curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+            sudo apt install -y nodejs
+            sudo npm install --global n
+            sudo n 13.8.0
 
   destroy-environment:
     description: Destroy back-end and front-end cloudformation stacks given a workflow ID.
@@ -200,40 +210,22 @@ jobs:
           paths:
             - project/.circleci/ansible/inventory.txt
   configure-infrastructure:
-   docker:
-      # Docker image here that supports Ansible
-      - image: python:3.7-alpine3.11     
-   steps:
-      - checkout       
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - install_ansible
+      - install_awscli
       - add_ssh_keys:
-          fingerprints: ["a1:56:c6:ed:b7:68:d6:4e:ba:10:51:cb:fe:c4:19:21"]
+          fingerprints: ["ad:56:fd:c7:4e:d7:0d:12:89:af:43:4b:f5:8d:0a:7f"] 
       - attach_workspace:
           at: ~/
-
-      - run:
-          name: Install dependencies
-          command: |
-              apk add --update tar gzip ansible
-              pip install awscli
       - run:
           name: Configure server
           command: |
-            cat ./.circleci/ansible/inventory.txt
+            cat ~/project/.circleci/ansible/inventory.txt
             export ANSIBLE_HOST_KEY_CHECKING=False
-            export RECORD_HOST_KEYS=False
-            export ANSIBLE_PARAMIKO_BANNER_TIMEOUT=30   
-            echo ENVIROMENT=production > "backend/.env"      
-            echo TYPEORM_CONNECTION=postgres >> "backend/.env"
-            echo TYPEORM_MIGRATIONS_DIR=./src/migrations >> "backend/.env"
-            echo TYPEORM_ENTITIES=./src/modules/domain/**/*.entity.ts >> "backend/.env"          
-            echo TYPEORM_PORT=$TYPEORM_PORT >> "backend/.env"      
-            echo TYPEORM_USERNAME=$TYPEORM_USERNAME >> "backend/.env"            
-            echo TYPEORM_PASSWORD=$TYPEORM_PASSWORD >> "backend/.env"      
-            echo TYPEORM_DATABASE=$TYPEORM_DATABASE >> "backend/.env"     
-            echo "CONTENT OF backend/.env"      
-            cat backend/.env         
-            cd .circleci/ansible
-            ansible-playbook -i inventory.txt configure-server.yml -v           
+            ansible-playbook -i ~/project/.circleci/ansible/inventory.txt ~/project/.circleci/ansible/configure-server.yml       
   run-migrations:
     docker:
       - image: cimg/node:13.8.0
@@ -252,7 +244,93 @@ jobs:
             if grep -q "has been executed successfully." ~/project/backend/migrations_dump.txt
             then
               curl https://kvdb.io/${KVDB_BUCKET}/migration_${CIRCLE_WORKFLOW_ID:0:7}  -d '1'
-            fi 
+            fi                    
+  deploy-frontend:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - install_awscli
+      - install_node
+      - restore_cache:
+          keys: ['frontend-deps-{{ checksum "frontend/package-lock.json" }}']
+      - run:
+          name: Install dependencies
+          command: |
+            cd frontend
+            npm install
+      - run:
+          name: Get backend url
+          command: |
+            BACKEND_PUBLIC_IP=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=backend-<IDENTIFIER>" \
+            --query 'Reservations[*].Instances[*].PublicIpAddress' \
+            --output text)
+            echo "API_URL=http://${BACKEND_PUBLIC_IP}:3030" > frontend/.env
+            cat frontend/.env
+      - run:
+          name: Deploy frontend objects
+          command: |
+            cd frontend
+            npm run build
+            aws s3 cp dist s3://udapeople-${CIRCLE_WORKFLOW_ID:0:7} --recursive    
+
+  deploy-backend:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - install_awscli
+      - install_ansible
+      - install_node
+      - add_ssh_keys:
+          fingerprints: ["a1:56:c6:ed:b7:68:d6:4e:ba:10:51:cb:fe:c4:19:21"]
+      - attach_workspace:
+          at: ~/
+      - restore_cache:
+          keys: ['backend-deps-{{ checksum "backend/package-lock.json" }}']
+      - run:
+          name: Install dependencies
+          command: |
+            cd backend
+            npm install
+      - run:
+          name: package backend
+          command: |
+            cd backend
+            npm run build
+            tar -czf artifact.tar.gz dist/* package*
+            cd ..
+            cp backend/artifact.tar.gz .circleci/ansible/roles/deploy/files
+      - run:
+          name: Deploy backend
+          command: |
+            export TYPEORM_MIGRATIONS_DIR=./migrations
+            export TYPEORM_ENTITIES=./modules/domain/**/*.entity{.ts,.js}
+            export TYPEORM_MIGRATIONS=./migrations/*.ts
+            cd .circleci/ansible
+            cat inventory.txt
+            ansible-playbook -i inventory.txt deploy-backend.yml
+      - destroy-environment
+      - revert-migrations
+                    
+  # deploy-backend:
+  #   docker:
+  #     # Docker image here that supports Ansible
+  #   steps:
+  #     # Checkout code from git
+  #     # Add ssh keys with fingerprint
+  #     # attach workspace
+  #     - run:
+  #         name: Install dependencies
+  #         command: |
+  #           # your code here
+  #     - run:
+  #         name: Deploy backend
+  #         command: |
+  #           # your code here
+  #     # Here's where you will add some code to rollback on failure 
+
 
 # version: 2.1
 
@@ -614,8 +692,8 @@ workflows:
           requires: [deploy-infrastructure]
       - run-migrations:
           requires: [configure-infrastructure]
-#       - deploy-frontend:
-#           requires: [run-migrations]
+      - deploy-frontend:
+          requires: [run-migrations]
 #       - deploy-backend:
 #           requires: [run-migrations]
 #       - smoke-test:
