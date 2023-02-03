@@ -1,6 +1,5 @@
 
 ---
-
 - name: "configuration play." 
   hosts: web
   user: ubuntu
@@ -21,11 +20,18 @@
       apt:
         name: python3
         update_cache: yes
+    - name: "Install Node.js 13"
+      shell: |
+        curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+        sudo npm install -g n
+        sudo n 13.8.0
+    - name: "Install PM2 Globally"
+      npm:
+        name: pm2
+        global: yes  
   roles:
     - configure-prometheus-node-exporter
-    - configure-server
-    
-
 
 
 
