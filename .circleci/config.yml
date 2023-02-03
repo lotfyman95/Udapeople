@@ -31,6 +31,7 @@ commands:
             sudo apt install ansible
 
 
+
 #   destroy-environment:
 #     description: Destroy back-end and front-end cloudformation stacks given a workflow ID.
 #     parameters:
@@ -199,6 +200,43 @@ jobs:
           root: ~/
           paths:
             - project/.circleci/ansible/inventory.txt
+  configure-infrastructure:
+   docker:
+      # Docker image here that supports Ansible
+      - image: python:3.7-alpine3.11     
+   steps:
+      - checkout       
+      - add_ssh_keys:
+          fingerprints: ["a1:56:c6:ed:b7:68:d6:4e:ba:10:51:cb:fe:c4:19:21"]
+      - attach_workspace:
+          at: ~/
+
+      - run:
+          name: Install dependencies
+          command: |
+              apk add --update tar gzip ansible
+              pip install awscli
+      - run:
+          name: Configure server
+          command: |
+            cat ./.circleci/ansible/inventory.txt
+            export ANSIBLE_HOST_KEY_CHECKING=False
+            export RECORD_HOST_KEYS=False
+            export ANSIBLE_PARAMIKO_BANNER_TIMEOUT=30   
+            echo ENVIROMENT=production > "backend/.env"      
+            echo TYPEORM_CONNECTION=postgres >> "backend/.env"
+            echo TYPEORM_MIGRATIONS_DIR=./src/migrations >> "backend/.env"
+            echo TYPEORM_ENTITIES=./src/modules/domain/**/*.entity.ts >> "backend/.env"          
+            echo TYPEORM_PORT=$TYPEORM_PORT >> "backend/.env"      
+            echo TYPEORM_USERNAME=$TYPEORM_USERNAME >> "backend/.env"            
+            echo TYPEORM_PASSWORD=$TYPEORM_PASSWORD >> "backend/.env"      
+            echo TYPEORM_DATABASE=$TYPEORM_DATABASE >> "backend/.env"     
+            echo "CONTENT OF backend/.env"      
+            cat backend/.env         
+            cd .circleci/ansible
+            ansible-playbook -i inventory.txt configure-server.yml -v  
+
+
 # version: 2.1
 
 # commands:
@@ -555,8 +593,8 @@ workflows:
           filters:
             branches:
               only: [master]
-      # - configure-infrastructure:
-      #     requires: [deploy-infrastructure]
+      - configure-infrastructure:
+          requires: [deploy-infrastructure]
 #       - run-migrations:
 #           requires: [configure-infrastructure]
 #       - deploy-frontend:
