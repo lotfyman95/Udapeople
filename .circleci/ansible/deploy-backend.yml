@@ -24,8 +24,103 @@
         TYPEORM_MIGRATIONS: "{{ lookup('env','TYPEORM_MIGRATIONS') }}"
         TYPEORM_ENTITIES: "{{ lookup('env','TYPEORM_ENTITIES') }}"
 
-  roles:
-    - deploy
+    - name: extract artifact
+      become: yes
+      unarchive:
+        src: files/artifact.tar.gz
+        dest: .
+    
+    - name: start app
+      become: yes
+      shell: |
+        npm install
+        pm2 stop all
+        pm2 start npm --name "udapeople-backend" -- run start
+      environment:
+        NODE_ENV: "{{ lookup('env', 'NODE_ENV') }}"
+        VERSION: "{{ lookup('env', 'VERSION') }}"
+        TYPEORM_CONNECTION: "{{ lookup('env', 'TYPEORM_CONNECTION') }}"
+        TYPEORM_MIGRATIONS_DIR: "{{ lookup('env', 'TYPEORM_MIGRATIONS_DIR') }}"
+        TYPEORM_ENTITIES: "{{ lookup('env', 'TYPEORM_ENTITIES') }}"
+        TYPEORM_MIGRATIONS: "{{ lookup('env', 'TYPEORM_MIGRATIONS') }}"
+        TYPEORM_HOST: "{{ lookup('env', 'TYPEORM_HOST') }}"
+        TYPEORM_PORT: "{{ lookup('env', 'TYPEORM_PORT') }}"
+        TYPEORM_USERNAME: "{{ lookup('env', 'TYPEORM_USERNAME') }}"
+        TYPEORM_PASSWORD: "{{ lookup('env', 'TYPEORM_PASSWORD') }}"
+        TYPEORM_DATABASE: "{{ lookup('env', 'TYPEORM_DATABASE') }}"
+            
+    - name: "Set pm2 start as service"
+      become: yes
+      shell: |
+        env PATH=$PATH:/usr/local/bin pm2 startup -u ubuntu
+    - name: check pm2 status
+      become: yes
+      shell: |
+        pm2 describe "udapeople-backend"
+      register: command_output_npm
+    - debug: var=command_output_npm.stdout_lines
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ---
+# - name: "configuration play." 
+#   hosts: web
+#   user: ubuntu
+#   become: true
+#   become_method: sudo
+#   become_user: root  
+#   gather_facts: false
+#   vars:
+#     - ansible_python_interpreter: /usr/bin/python3
+#     - ansible_host_key_checking: false
+#     - ansible_stdout_callback: yaml
+    
+#   pre_tasks:
+#     - name: Loading environment variables
+#       tags: always
+#       set_fact:
+#         TYPEORM_CONNECTION: "{{ lookup('env','TYPEORM_CONNECTION') }}"
+#         TYPEORM_HOST: "{{ lookup('env','TYPEORM_HOST') }}"
+#         TYPEORM_PORT: "{{ lookup('env', 'TYPEORM_PORT') }}"
+#         TYPEORM_USERNAME: "{{ lookup('env','TYPEORM_USERNAME') }}"
+#         TYPEORM_PASSWORD: "{{ lookup('env','TYPEORM_PASSWORD') }}"
+#         TYPEORM_DATABASE: "{{ lookup('env','TYPEORM_DATABASE') }}"
+#         TYPEORM_MIGRATIONS: "{{ lookup('env','TYPEORM_MIGRATIONS') }}"
+#         TYPEORM_ENTITIES: "{{ lookup('env','TYPEORM_ENTITIES') }}"
+      
+#   roles:
+#     - deploy
 
 
 
