@@ -351,8 +351,8 @@ jobs:
         - image: amazon/aws-cli
         steps:
         - checkout
-        - install_awscli
-        - install_node
+        # - install_awscli
+        # - install_node
         - run:
             name: Save Old Workflow ID to kvdb.io
             command: |
